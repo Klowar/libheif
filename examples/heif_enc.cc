@@ -40,6 +40,8 @@
 
 #include <libheif/heif.h>
 
+#include "node_heif.h"
+
 #if HAVE_LIBJPEG
 extern "C" {
 // Prevent duplicate definition for libjpeg-turbo v2.0
@@ -69,58 +71,6 @@ int nclx_matrix_coefficients = 6;
 int nclx_colour_primaries = 2;
 int nclx_transfer_characteristic = 2;
 int nclx_full_range = true;
-
-static struct option long_options[] = {
-    {"help",                    no_argument,       0,                             'h'},
-    {"quality",                 required_argument, 0,                             'q'},
-    {"output",                  required_argument, 0,                             'o'},
-    {"lossless",                no_argument,       0,                             'L'},
-    {"thumb",                   required_argument, 0,                             't'},
-    {"verbose",                 no_argument,       0,                             'v'},
-    {"params",                  no_argument,       0,                             'P'},
-    {"no-alpha",                no_argument,       &master_alpha,                 0},
-    {"no-thumb-alpha",          no_argument,       &thumb_alpha,                  0},
-    {"bit-depth",               required_argument, 0,                             'b'},
-    {"avif",                    no_argument,       0,                             'A'},
-    {"matrix_coefficients",     required_argument, &nclx_matrix_coefficients,     0},
-    {"colour_primaries",        required_argument, &nclx_colour_primaries,        0},
-    {"transfer_characteristic", required_argument, &nclx_transfer_characteristic, 0},
-    {"full_range_flag",         required_argument, &nclx_full_range,              0},
-    {0, 0,                                         0,                             0}
-};
-
-void show_help(const char* argv0)
-{
-  std::cerr << " heif-enc  libheif version: " << heif_get_version() << "\n"
-            << "----------------------------------------\n"
-            << "Usage: heif-enc [options] image.jpeg ...\n"
-            << "\n"
-            << "When specifying multiple source images, they will all be saved into the same HEIF/AVIF file.\n"
-            << "\n"
-            << "When using the x265 encoder, you may pass it any of its parameters by\n"
-            << "prefixing the parameter name with 'x265:'. Hence, to set the 'ctu' parameter,\n"
-            << "you will have to set 'x265:ctu' in libheif (e.g.: -p x265:ctu=64).\n"
-            << "Note that there is no checking for valid parameters when using the prefix.\n"
-            << "\n"
-            << "Options:\n"
-            << "  -h, --help      show help\n"
-            << "  -q, --quality   set output quality (0-100) for lossy compression\n"
-            << "  -L, --lossless  generate lossless output (-q has no effect)\n"
-            << "  -t, --thumb #   generate thumbnail with maximum size # (default: off)\n"
-            << "      --no-alpha  do not save alpha channel\n"
-            << "      --no-thumb-alpha  do not save alpha channel in thumbnail image\n"
-            << "  -o, --output    output filename (optional)\n"
-            << "  -v, --verbose   enable logging output (more -v will increase logging level)\n"
-            << "  -P, --params    show all encoder parameters\n"
-            << "  -b #            bit-depth of generated HEIF/AVIF file when using 16-bit PNG input (default: 10 bit)\n"
-            << "  -p              set encoder parameter (NAME=VALUE)\n"
-            << "  -A, --avif      encode as AVIF\n"
-            << "  --matrix_coefficients     nclx profile: color conversion matrix coefficients, default=6 (see h.273)\n"
-            << "  --colour_primaries        nclx profile: color primaries (see h.273)\n"
-            << "  --transfer_characteristic nclx profile: transfer characteristics (see h.273)\n"
-            << "  --full_range_flag         nclx profile: full range flag, default: 1\n";
-}
-
 
 #if HAVE_LIBJPEG
 
@@ -895,12 +845,11 @@ void set_params(struct heif_encoder* encoder, std::vector<std::string> params)
   }
 }
 
-
-int main(int argc, char** argv)
+int node_heif::encode(int argc, char** argv)
 {
   int quality = 50;
   bool lossless = false;
-  std::string output_filename;
+  std::string output_filename = argv[0];
   int logging_level = 0;
   bool option_show_parameters = false;
   int thumbnail_bbox_size = 0;
@@ -908,47 +857,6 @@ int main(int argc, char** argv)
   bool enc_av1f = false;
 
   std::vector<std::string> raw_params;
-
-
-  while (true) {
-    int option_index = 0;
-    int c = getopt_long(argc, argv, "hq:Lo:vPp:t:b:A", long_options, &option_index);
-    if (c == -1)
-      break;
-
-    switch (c) {
-      case 'h':
-        show_help(argv[0]);
-        return 0;
-      case 'q':
-        quality = atoi(optarg);
-        break;
-      case 'L':
-        lossless = true;
-        break;
-      case 'o':
-        output_filename = optarg;
-        break;
-      case 'v':
-        logging_level++;
-        break;
-      case 'P':
-        option_show_parameters = true;
-        break;
-      case 'p':
-        raw_params.push_back(optarg);
-        break;
-      case 't':
-        thumbnail_bbox_size = atoi(optarg);
-        break;
-      case 'b':
-        output_bit_depth = atoi(optarg);
-        break;
-      case 'A':
-        enc_av1f = true;
-        break;
-    }
-  }
 
   if (quality < 0 || quality > 100) {
     std::cerr << "Invalid quality factor. Must be between 0 and 100.\n";
@@ -962,7 +870,6 @@ int main(int argc, char** argv)
       logging_level = 4;
     }
   }
-
 
 
   // ==============================================================================
@@ -1010,16 +917,9 @@ int main(int argc, char** argv)
     return 0;
   }
 
-
-  if (optind > argc - 1) {
-    show_help(argv[0]);
-    return 0;
-  }
-
-
   struct heif_error error;
 
-  for (; optind < argc; optind++) {
+  for (optind = 1; optind < argc; optind++) {
     std::string input_filename = argv[optind];
 
     if (output_filename.empty()) {
@@ -1144,4 +1044,8 @@ int main(int argc, char** argv)
   }
 
   return 0;
+}
+
+int main(int argc, char** argv) {
+  node_heif::encode(argc, argv);
 }
